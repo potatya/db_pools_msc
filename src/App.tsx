@@ -239,6 +239,9 @@ function App() {
         setPools([]);
       } else {
         console.log("✅ Получено записей:", data?.length || 0);
+        if (data && data.length > 0) {
+          console.log("📊 Пример первой записи:", data[0]);
+        }
         setPools(data as Pool[] || []);
       }
     } catch (err) {
