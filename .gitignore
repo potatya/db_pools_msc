@@ -48,3 +48,4 @@ pools.json
 
 *.bak
 *.bak.*
+.vercel

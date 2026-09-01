@@ -1,5 +1,5 @@
 ﻿import { useState, useMemo, useCallback } from "react";
-import { pools as INITIAL_POOLS, STATUS_LABELS, type Pool, type PoolStatus } from "./data/pools";
+import { STATUS_LABELS, type Pool, type PoolStatus } from "./data/pools";
 import { PoolForm } from "./components/PoolForm";
 import { createPortal } from "react-dom";
 
@@ -528,5 +528,6 @@ function App() {
 }
 
 export default App;
+
 
 
