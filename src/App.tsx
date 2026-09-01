@@ -1,7 +1,20 @@
-﻿import { useState, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
+import { createClient } from '@supabase/supabase-js';
 import { STATUS_LABELS, type Pool, type PoolStatus } from "./data/pools";
 import { PoolForm } from "./components/PoolForm";
 import { createPortal } from "react-dom";
+
+// --- Инициализация Supabase с проверкой ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+console.log("🔍 SUPABASE_URL:", supabaseUrl);
+console.log("🔍 SUPABASE_KEY:", supabaseKey ? "✅ установлен" : "❌ отсутствует");
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("❌ Переменные окружения не найдены!");
+}
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const ALL = "all" as const;
 type FilterStatus = PoolStatus | typeof ALL;
@@ -14,27 +27,6 @@ const STATUS_COLORS: Record<PoolStatus, { bg: string; text: string; dot: string;
   unconfirmed: { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-400", border: "border-blue-200" },
 };
 
-const STORAGE_KEY = "pools-db-v1";
-
-function loadPools(): Pool[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Pool[];
-  } catch {}
-  return [];
-}
-
-function savePools(pools: Pool[]) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pools)); } catch {}
-}
-
-function pluralize(n: number, one: string, two: string, five: string) {
-  if (n % 10 === 1 && n % 100 !== 11) return one;
-  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return two;
-  return five;
-}
-
-// --- Компоненты ---
 function StatusBadge({ status }: { status: PoolStatus }) {
   const c = STATUS_COLORS[status];
   return (
@@ -82,7 +74,6 @@ function TriBool({ value }: { value: boolean | null }) {
   return <span className="text-slate-300 text-sm">·</span>;
 }
 
-// --- Карточка ---
 function PoolCard({ pool, onEdit, onDelete }: { pool: Pool; onEdit: (pool: Pool) => void; onDelete: (id: number) => void }) {
   const [expanded, setExpanded] = useState(false);
   const items = [
@@ -134,7 +125,6 @@ function PoolCard({ pool, onEdit, onDelete }: { pool: Pool; onEdit: (pool: Pool)
   );
 }
 
-// --- Строка таблицы (с комментариями) ---
 function TableRow({ pool, even, onEdit, onDelete }: { pool: Pool; even: boolean; onEdit: (pool: Pool) => void; onDelete: (id: number) => void }) {
   const [open, setOpen] = useState(false);
   const td = `px-3 py-2.5 text-sm ${even ? "bg-white" : "bg-slate-50/50"}`;
@@ -175,7 +165,6 @@ function TableRow({ pool, even, onEdit, onDelete }: { pool: Pool; even: boolean;
   );
 }
 
-// --- Экспорт в CSV (заголовки в нижнем регистре, как в таблице Supabase) ---
 function exportCSV(pools: Pool[]) {
   const headers = [
     "id", "name", "status", "district", "metro",
@@ -220,9 +209,9 @@ function exportCSV(pools: Pool[]) {
   URL.revokeObjectURL(link.href);
 }
 
-// --- Основной компонент App ---
 function App() {
-  const [pools, setPools] = useState<Pool[]>(loadPools);
+  const [pools, setPools] = useState<Pool[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     status: ALL as FilterStatus,
     district: "",
@@ -236,6 +225,77 @@ function App() {
   const [formPool, setFormPool] = useState<Pool | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+
+  async function fetchPools() {
+    console.log("🔄 Запрос к Supabase...");
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('pools')
+        .select('*')
+        .order('id', { ascending: true });
+      if (error) {
+        console.error("❌ Ошибка Supabase:", error);
+        setPools([]);
+      } else {
+        console.log("✅ Получено записей:", data?.length || 0);
+        setPools(data as Pool[] || []);
+      }
+    } catch (err) {
+      console.error("❌ Исключение при загрузке:", err);
+      setPools([]);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    fetchPools();
+  }, []);
+
+  async function addPool(pool: Omit<Pool, 'id'>) {
+    const { data, error } = await supabase.from('pools').insert([pool]).select();
+    if (error) {
+      console.error('Ошибка добавления:', error);
+      return;
+    }
+    if (data && data.length > 0) {
+      setPools(prev => [...prev, data[0] as Pool]);
+    }
+  }
+
+  async function updatePool(pool: Pool) {
+    const { error } = await supabase.from('pools').update(pool).eq('id', pool.id);
+    if (error) {
+      console.error('Ошибка обновления:', error);
+      return;
+    }
+    setPools(prev => prev.map(p => p.id === pool.id ? pool : p));
+  }
+
+  async function deletePool(id: number) {
+    if (!confirm('Удалить бассейн?')) return;
+    const { error } = await supabase.from('pools').delete().eq('id', id);
+    if (error) {
+      console.error('Ошибка удаления:', error);
+      return;
+    }
+    setPools(prev => prev.filter(p => p.id !== id));
+  }
+
+  const openAdd = useCallback(() => { setFormPool(null); setFormOpen(true); }, []);
+  const openEdit = useCallback((pool: Pool) => { setFormPool(pool); setFormOpen(true); }, []);
+  const handleSave = useCallback(async (saved: Pool) => {
+    if (saved.id) {
+      await updatePool(saved);
+    } else {
+      const { id, ...newPool } = saved;
+      await addPool(newPool);
+    }
+    setFormOpen(false);
+  }, []);
+  const handleDelete = useCallback(async (id: number) => {
+    await deletePool(id);
+  }, []);
 
   const districts = useMemo(
     () => [...new Set(pools.map((p) => p.district).filter((d) => d && d !== "—"))].sort(),
@@ -264,28 +324,6 @@ function App() {
     });
   }, [pools, filters]);
 
-  const openAdd = useCallback(() => { setFormPool(null); setFormOpen(true); }, []);
-  const openEdit = useCallback((pool: Pool) => { setFormPool(pool); setFormOpen(true); }, []);
-
-  const handleSave = useCallback((saved: Pool) => {
-    setPools((prev) => {
-      const index = prev.findIndex((p) => p.id === saved.id);
-      const next = index >= 0 ? [...prev.slice(0, index), saved, ...prev.slice(index + 1)] : [...prev, saved];
-      savePools(next);
-      return next;
-    });
-    setFormOpen(false);
-  }, []);
-
-  const handleDelete = useCallback((id: number) => {
-    if (!confirm("Удалить бассейн?")) return;
-    setPools((prev) => {
-      const next = prev.filter((p) => p.id !== id);
-      savePools(next);
-      return next;
-    });
-  }, []);
-
   const clearFilters = useCallback(() => {
     setFilters({
       status: ALL,
@@ -309,13 +347,15 @@ function App() {
     filters.eveningWeekday !== "all" ||
     filters.weekends !== "all";
 
-  const nextId = useMemo(() => Math.max(0, ...pools.map((p) => p.id)) + 1, [pools]);
   const activeCount = pools.filter((p) => p.status === "active").length;
+
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen text-slate-600">Загрузка бассейнов...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">База бассейнов</h1>
@@ -353,7 +393,6 @@ function App() {
           </div>
         </div>
 
-        {/* Фильтры */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
@@ -507,16 +546,16 @@ function App() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white/80 backdrop-blur-sm border-b border-slate-100 px-6 py-4 flex items-center justify-between z-10">
               <h2 className="text-xl font-semibold text-slate-900">{formPool ? "Редактировать бассейн" : "Новый бассейн"}</h2>
-              <button onClick={(e) => { e.stopPropagation(); setFormOpen(false); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setFormOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
               </button>
             </div>
             <div className="p-6">
               <PoolForm
                 pool={formPool}
-                onCancel={() => setFormOpen(false)} onCancel={(e) => { if (e) e.stopPropagation(); setFormOpen(false); }}
+                onCancel={() => setFormOpen(false)}
                 onSave={handleSave}
-                nextId={nextId}
+                nextId={Math.max(0, ...pools.map(p => p.id)) + 1}
               />
             </div>
           </div>
@@ -528,7 +567,3 @@ function App() {
 }
 
 export default App;
-
-
-
-
