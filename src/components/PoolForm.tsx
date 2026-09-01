@@ -41,10 +41,10 @@ function poolToForm(pool: Pool): FormData {
     storage: nullToTri(pool.storage),
     eveningWeekday: nullToTri(pool.eveningWeekday),
     weekends: nullToTri(pool.weekends),
-    lengthM: pool.lengthM != null ? String(pool.lengthM) : "",
-    depthM: pool.depthM && pool.depthM !== "—" ? pool.depthM : "",
-    priceRub: pool.priceRub && pool.priceRub !== "—" ? pool.priceRub : "",
-    timeMin: pool.timeMin != null ? String(pool.timeMin) : "",
+    lengthM: pool.length != null ? String(pool.length) : "",
+    depthM: pool.depth && pool.depth !== "—" ? pool.depth : "",
+    priceRub: pool.pricerub && pool.pricerub !== "—" ? pool.pricerub : "",
+    timeMin: pool.timemin != null ? String(pool.timemin) : "",
     dryRoom: nullToTri(pool.dryRoom),
     contact: pool.contact === "—" ? "" : pool.contact,
     notes: pool.notes,
@@ -62,10 +62,10 @@ function formToPool(f: FormData, id: number): Pool {
     storage: triToNull(f.storage),
     eveningWeekday: triToNull(f.eveningWeekday),
     weekends: triToNull(f.weekends),
-    lengthM: f.lengthM ? Number(f.lengthM) : null,
-    depthM: f.depthM || "—",
-    priceRub: f.priceRub || "—",
-    timeMin: f.timeMin ? Number(f.timeMin) : null,
+    lengthM: f.length ? Number(f.length) : null,
+    depthM: f.depth || "—",
+    priceRub: f.pricerub || "—",
+    timeMin: f.timemin ? Number(f.timemin) : null,
     dryRoom: triToNull(f.dryRoom),
     contact: f.contact || "—",
     notes: f.notes,
@@ -218,7 +218,7 @@ export function PoolForm({
           <input
             type="number"
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-slate-400 focus:outline-none"
-            value={form.lengthM}
+            value={form.length}
             onChange={(e) => set("lengthM", e.target.value)}
           />
         </div>
@@ -227,7 +227,7 @@ export function PoolForm({
           <input
             type="text"
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-slate-400 focus:outline-none"
-            value={form.depthM}
+            value={form.depth}
             onChange={(e) => set("depthM", e.target.value)}
           />
         </div>
@@ -236,7 +236,7 @@ export function PoolForm({
           <input
             type="text"
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-slate-400 focus:outline-none"
-            value={form.priceRub}
+            value={form.pricerub}
             onChange={(e) => set("priceRub", e.target.value)}
           />
         </div>
@@ -245,7 +245,7 @@ export function PoolForm({
           <input
             type="number"
             className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-slate-400 focus:outline-none"
-            value={form.timeMin}
+            value={form.timemin}
             onChange={(e) => set("timeMin", e.target.value)}
           />
         </div>
@@ -287,3 +287,4 @@ export function PoolForm({
     </form>
   );
 }
+
