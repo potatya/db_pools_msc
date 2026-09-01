@@ -107,10 +107,10 @@ function PoolCard({ pool, onEdit, onDelete }: { pool: Pool; onEdit: (pool: Pool)
       </div>
 
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 font-mono">
-        {pool.priceRub && <span className="font-mono text-sm font-semibold text-slate-700">{pool.priceRub} ₽</span>}
-        {pool.lengthM && <span className="text-sm text-slate-400 font-mono">{pool.lengthM}м</span>}
-        {pool.depthM && pool.depthM !== "—" && <span className="text-sm text-slate-400 font-mono">глуб. {pool.depthM}м</span>}
-        {pool.timeMin && <span className="text-sm text-slate-400 font-mono">{pool.timeMin} мин</span>}
+        {pool.pricerub && <span className="font-mono text-sm font-semibold text-slate-700">{pool.pricerub} ₽</span>}
+        {pool.length && <span className="text-sm text-slate-400 font-mono">{pool.length}м</span>}
+        {pool.depth && pool.depth !== "—" && <span className="text-sm text-slate-400 font-mono">глуб. {pool.depth}м</span>}
+        {pool.timemin && <span className="text-sm text-slate-400 font-mono">{pool.timemin} мин</span>}
       </div>
 
       {expanded && (
@@ -140,10 +140,10 @@ function TableRow({ pool, even, onEdit, onDelete }: { pool: Pool; even: boolean;
         <td className={`${td} text-center`}><TriBool value={pool.storage} /></td>
         <td className={`${td} text-center`}><TriBool value={pool.eveningWeekday} /></td>
         <td className={`${td} text-center`}><TriBool value={pool.weekends} /></td>
-        <td className={`${td} text-slate-600`}>{pool.lengthM ? `${pool.lengthM}м` : "·"}</td>
-        <td className={`${td} text-slate-600`}>{pool.depthM && pool.depthM !== "—" ? `${pool.depthM}м` : "·"}</td>
-        <td className={`${td} text-slate-700 font-medium whitespace-nowrap`}>{pool.priceRub ?? "·"}</td>
-        <td className={`${td} text-slate-500`}>{pool.timeMin ?? "·"}</td>
+        <td className={`${td} text-slate-600`}>{pool.length ? `${pool.length}м` : "·"}</td>
+        <td className={`${td} text-slate-600`}>{pool.depth && pool.depth !== "—" ? `${pool.depth}м` : "·"}</td>
+        <td className={`${td} text-slate-700 font-medium whitespace-nowrap`}>{pool.pricerub ?? "·"}</td>
+        <td className={`${td} text-slate-500`}>{pool.timemin ?? "·"}</td>
         <td className={`${td} text-right flex items-center justify-end gap-1`}>
           <EditBtn onClick={() => onEdit(pool)} />
           <DeleteBtn onClick={() => onDelete(pool.id)} />
@@ -181,10 +181,10 @@ function exportCSV(pools: Pool[]) {
     p.storage === true ? "да" : p.storage === false ? "нет" : "",
     p.eveningWeekday === true ? "да" : p.eveningWeekday === false ? "нет" : "",
     p.weekends === true ? "да" : p.weekends === false ? "нет" : "",
-    p.lengthM ?? "",
-    p.depthM ?? "",
-    p.priceRub ?? "",
-    p.timeMin ?? "",
+    p.length ?? "",
+    p.depth ?? "",
+    p.pricerub ?? "",
+    p.timemin ?? "",
     p.dryRoom === true ? "да" : p.dryRoom === false ? "нет" : "",
     p.contact ?? "",
     p.notes ?? ""
@@ -570,3 +570,4 @@ function App() {
 }
 
 export default App;
+
