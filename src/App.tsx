@@ -21,7 +21,7 @@ function loadPools(): Pool[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw) as Pool[];
   } catch {}
-  return INITIAL_POOLS;
+  return [];
 }
 
 function savePools(pools: Pool[]) {
@@ -528,6 +528,7 @@ function App() {
 }
 
 export default App;
+
 
 
 
