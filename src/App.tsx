@@ -14,13 +14,12 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // --- Парольная защита ---
 const STORAGE_PASSWORD_KEY = 'app_password_hash';
 
-// Простая хеш-функция (не криптографическая, но для личного использования подойдёт)
 function simpleHash(str: string): string {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash |= 0; // 32-bit integer
+        hash |= 0;
     }
     return hash.toString(36);
 }
@@ -52,7 +51,6 @@ function Login({ onLogin }: { onLogin: () => void }) {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (isFirstRun) {
-            // Установка нового пароля
             if (password.length < 4) {
                 setError("Пароль должен быть не менее 4 символов");
                 return;
@@ -62,7 +60,6 @@ function Login({ onLogin }: { onLogin: () => void }) {
             onLogin();
             return;
         }
-        // Вход
         if (verifyPassword(password)) {
             onLogin();
         } else {
@@ -109,7 +106,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
     );
 }
 
-// --- Компонент смены пароля (модалка) ---
+// --- Компонент смены пароля ---
 function ChangePasswordModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
     const [oldPassword, setOldPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
@@ -179,13 +176,191 @@ function ChangePasswordModal({ onClose, onSuccess }: { onClose: () => void; onSu
     );
 }
 
-// --- Основной компонент App (с защитой) ---
-function App() {
-    const [authenticated, setAuthenticated] = useState<boolean>(() => {
-        // Автоматический вход, если пароль уже установлен (но мы не храним сессию, поэтому при загрузке всегда запрашиваем)
-        // Для удобства можно хранить флаг сессии, но пусть всегда запрашивает пароль при загрузке
-        return false;
+// --- Вспомогательные компоненты ---
+function StatusBadge({ status }: { status: PoolStatus }) {
+    const colors: Record<PoolStatus, { bg: string; text: string; dot: string; border: string }> = {
+        active: { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500", border: "border-emerald-200" },
+        negotiating: { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500", border: "border-amber-200" },
+        closed: { bg: "bg-slate-100", text: "text-slate-600", dot: "bg-slate-400", border: "border-slate-200" },
+        blacklist: { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", border: "border-red-200" },
+        unconfirmed: { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-400", border: "border-blue-200" },
+    };
+    const c = colors[status];
+    return (
+        <span className={`${c.bg} ${c.text} text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${c.border}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}></span>
+            {STATUS_LABELS[status]}
+        </span>
+    );
+}
+
+function EditBtn({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+    return (
+        <button onClick={onClick} className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded hover:bg-slate-100" aria-label="Редактировать">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+        </button>
+    );
+}
+
+function DeleteBtn({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+    return (
+        <button onClick={onClick} className="text-slate-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50" aria-label="Удалить">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                <path d="M19 6l-1 14c0 1-1 2-2 2H8c-1 0-2-1-2-2L5 6" />
+            </svg>
+        </button>
+    );
+}
+
+function TriBool({ value }: { value: boolean | null }) {
+    if (value === true) return <span className="text-emerald-600 font-medium text-sm">✓</span>;
+    if (value === false) return <span className="text-slate-300 text-sm">×</span>;
+    return <span className="text-slate-300 text-sm">·</span>;
+}
+
+function PoolCard({ pool, onEdit, onDelete }: { pool: Pool; onEdit: (pool: Pool) => void; onDelete: (id: number) => void }) {
+    const [expanded, setExpanded] = useState(false);
+    const items = [
+        { label: "Фридайв", value: pool.freediving },
+        { label: "Хранение", value: pool.storage },
+        { label: "Вечер буд.", value: pool.eveningWeekday },
+        { label: "Выходные", value: pool.weekends },
+    ];
+
+    return (
+        <div className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all shadow-sm hover:shadow-md p-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-slate-900 leading-tight text-lg break-words">{pool.name}</h3>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">{pool.district} · {pool.metro}</p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                    <StatusBadge status={pool.status} />
+                    <EditBtn onClick={(e) => { e.stopPropagation(); onEdit(pool); }} />
+                    <DeleteBtn onClick={(e) => { e.stopPropagation(); onDelete(pool.id); }} />
+                </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                {items.map(({ label, value }) => (
+                    <div key={label} className="flex items-center gap-1">
+                        <span className="text-slate-400">{label}</span>
+                        <TriBool value={value} />
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 font-mono">
+                {pool.pricerub && <span className="font-mono text-sm font-semibold text-slate-700">{pool.pricerub} ₽</span>}
+                {pool.length && <span className="text-sm text-slate-400 font-mono">{pool.length}м</span>}
+                {pool.depth && pool.depth !== "—" && <span className="text-sm text-slate-400 font-mono">глуб. {pool.depth}м</span>}
+                {pool.timemin && <span className="text-sm text-slate-400 font-mono">{pool.timemin} мин</span>}
+            </div>
+
+            {expanded && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                    <p className="text-sm text-slate-600 leading-relaxed mb-1.5">{pool.notes}</p>
+                    {pool.contact && pool.contact !== "—" && (
+                        <p className="text-xs font-mono text-slate-500">{pool.contact}</p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TableRow({ pool, even, onEdit, onDelete }: { pool: Pool; even: boolean; onEdit: (pool: Pool) => void; onDelete: (id: number) => void }) {
+    const [open, setOpen] = useState(false);
+    const td = `px-3 py-2.5 text-sm ${even ? "bg-white" : "bg-slate-50/50"}`;
+
+    return (
+        <>
+            <tr className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setOpen(!open)}>
+                <td className={td} onClick={() => setOpen(v => !v)}>{pool.id}</td>
+                <td className={`${td} font-medium text-slate-800 whitespace-nowrap`} onClick={() => setOpen(v => !v)}>{pool.name}</td>
+                <td className={td} onClick={() => setOpen(v => !v)}><StatusBadge status={pool.status} /></td>
+                <td className={`${td} text-slate-500 whitespace-nowrap`} onClick={() => setOpen(v => !v)}>{pool.district} / {pool.metro}</td>
+                <td className={`${td} text-center`}><TriBool value={pool.freediving} /></td>
+                <td className={`${td} text-center`}><TriBool value={pool.storage} /></td>
+                <td className={`${td} text-center`}><TriBool value={pool.eveningWeekday} /></td>
+                <td className={`${td} text-center`}><TriBool value={pool.weekends} /></td>
+                <td className={`${td} text-slate-600`}>{pool.length ? `${pool.length}м` : "·"}</td>
+                <td className={`${td} text-slate-600`}>{pool.depth && pool.depth !== "—" ? `${pool.depth}м` : "·"}</td>
+                <td className={`${td} text-slate-700 font-medium whitespace-nowrap`}>{pool.pricerub ?? "·"}</td>
+                <td className={`${td} text-slate-500`}>{pool.timemin ?? "·"}</td>
+                <td className={`${td} text-right flex items-center justify-end gap-1`}>
+                    <EditBtn onClick={() => onEdit(pool)} />
+                    <DeleteBtn onClick={() => onDelete(pool.id)} />
+                </td>
+            </tr>
+            {open && (
+                <tr className="bg-slate-50/80">
+                    <td colSpan={13} className="px-4 py-3 text-sm">
+                        <div className="max-w-3xl">
+                            <p className="text-sm text-slate-600 leading-relaxed">{pool.notes}</p>
+                            {pool.contact && pool.contact !== "—" && (
+                                <p className="text-xs text-slate-400 mt-1">{pool.contact}</p>
+                            )}
+                        </div>
+                    </td>
+                </tr>
+            )}
+        </>
+    );
+}
+
+function exportCSV(pools: Pool[]) {
+    const headers = [
+        "id", "name", "status", "district", "metro",
+        "freediving", "storage", "eveningweekday", "weekends",
+        "length", "depth", "pricerub", "timemin", "dryroom", "contact", "notes"
+    ];
+    const rows = pools.map(p => [
+        p.id,
+        p.name,
+        p.status,
+        p.district,
+        p.metro,
+        p.freediving === true ? "да" : p.freediving === false ? "нет" : "",
+        p.storage === true ? "да" : p.storage === false ? "нет" : "",
+        p.eveningWeekday === true ? "да" : p.eveningWeekday === false ? "нет" : "",
+        p.weekends === true ? "да" : p.weekends === false ? "нет" : "",
+        p.length ?? "",
+        p.depth ?? "",
+        p.pricerub ?? "",
+        p.timemin ?? "",
+        p.dryRoom === true ? "да" : p.dryRoom === false ? "нет" : "",
+        p.contact ?? "",
+        p.notes ?? ""
+    ]);
+
+    let csv = headers.join(",") + "\n";
+    rows.forEach(row => {
+        const escaped = row.map(cell => {
+            if (typeof cell === "string" && (cell.includes(",") || cell.includes("\"") || cell.includes("\n"))) {
+                return `"${cell.replace(/"/g, '""')}"`;
+            }
+            return cell;
+        });
+        csv += escaped.join(",") + "\n";
     });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `pools_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+// --- Основной компонент App ---
+function App() {
+    const [authenticated, setAuthenticated] = useState<boolean>(false);
     const [showChangePassword, setShowChangePassword] = useState(false);
 
     const handleLogin = () => setAuthenticated(true);
@@ -332,56 +507,10 @@ function App() {
 
     const activeCount = pools.filter((p) => p.status === "active").length;
 
-    function exportCSV(pools: Pool[]) {
-        const headers = [
-            "id", "name", "status", "district", "metro",
-            "freediving", "storage", "eveningweekday", "weekends",
-            "length", "depth", "pricerub", "timemin", "dryroom", "contact", "notes"
-        ];
-        const rows = pools.map(p => [
-            p.id,
-            p.name,
-            p.status,
-            p.district,
-            p.metro,
-            p.freediving === true ? "да" : p.freediving === false ? "нет" : "",
-            p.storage === true ? "да" : p.storage === false ? "нет" : "",
-            p.eveningWeekday === true ? "да" : p.eveningWeekday === false ? "нет" : "",
-            p.weekends === true ? "да" : p.weekends === false ? "нет" : "",
-            p.length ?? "",
-            p.depth ?? "",
-            p.pricerub ?? "",
-            p.timemin ?? "",
-            p.dryRoom === true ? "да" : p.dryRoom === false ? "нет" : "",
-            p.contact ?? "",
-            p.notes ?? ""
-        ]);
-
-        let csv = headers.join(",") + "\n";
-        rows.forEach(row => {
-            const escaped = row.map(cell => {
-                if (typeof cell === "string" && (cell.includes(",") || cell.includes("\"") || cell.includes("\n"))) {
-                    return `"${cell.replace(/"/g, '""')}"`;
-                }
-                return cell;
-            });
-            csv += escaped.join(",") + "\n";
-        });
-
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `pools_${new Date().toISOString().slice(0,10)}.csv`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-    }
-
-    // Если не аутентифицирован – показываем экран входа
     if (!authenticated) {
         return <Login onLogin={handleLogin} />;
     }
 
-    // --- Основной интерфейс ---
     if (loading) {
         return <div className="flex items-center justify-center min-h-screen text-slate-600">Загрузка бассейнов...</div>;
     }
@@ -395,7 +524,6 @@ function App() {
                         <p className="text-sm text-slate-500 mt-0.5">Школа «Глубина» · {activeCount} активных · {pools.length} всего</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        {/* Кнопка смены пароля */}
                         <button
                             onClick={() => setShowChangePassword(true)}
                             className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors"
@@ -433,7 +561,6 @@ function App() {
                     </div>
                 </div>
 
-                {/* Фильтры (без изменений) */}
                 <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div>
@@ -510,10 +637,7 @@ function App() {
 
                     {hasFilters && (
                         <div className="mt-3 flex justify-end">
-                            <button
-                                onClick={clearFilters}
-                                className="text-sm text-slate-500 hover:text-slate-700 underline-offset-2 hover:underline"
-                            >
+                            <button onClick={clearFilters} className="text-sm text-slate-500 hover:text-slate-700 underline-offset-2 hover:underline">
                                 Сбросить все фильтры
                             </button>
                         </div>
@@ -607,24 +731,11 @@ function App() {
             {showChangePassword && (
                 <ChangePasswordModal
                     onClose={() => setShowChangePassword(false)}
-                    onSuccess={() => {
-                        // Можно показать уведомление
-                        alert("Пароль успешно изменён!");
-                    }}
+                    onSuccess={() => alert("Пароль успешно изменён!")}
                 />
             )}
         </div>
     );
 }
-
-// --- Вспомогательные компоненты (StatusBadge, EditBtn, DeleteBtn, TriBool, PoolCard, TableRow) ---
-// Они такие же, как в предыдущей версии, но с исправленными именами полей (length, depth, pricerub, timemin)
-// Для краткости я приведу их, но в реальном файле они должны быть.
-// Поскольку файл большой, я включу их в полный скрипт замены.
-
-// Чтобы не дублировать, я вынесу их в отдельный блок, но в этом скрипте они уже будут.
-
-// Обратите внимание, что все компоненты используют правильные имена полей.
-// Я уже заменил их во всех файлах ранее, так что они корректны.
 
 export default App;
